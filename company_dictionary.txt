@@ -1,0 +1,7 @@
+# One term per line, case-insensitive substring match.
+# Add internal codenames, unreleased product names, key client names, etc.
+# Lines starting with # are ignored.
+#
+# project-phoenix
+# acme-corp-contract
+# unreleased-feature-x

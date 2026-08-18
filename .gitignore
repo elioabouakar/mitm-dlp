@@ -1,0 +1,17 @@
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Secrets - never commit real API keys
+.env
+
+# mitmproxy generates its CA cert/keys outside this repo (~/.mitmproxy/), but
+# ignore it here too in case anyone copies it in locally
+*.pem
+*.p12
+*.cer
+
+# OS/editor noise
+.DS_Store
+*.swp
