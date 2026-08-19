@@ -37,14 +37,6 @@ AI_DOMAINS = [
     "chatgpt.com",
 ]
 
-# Whether to run the optional Layer 3 (Claude-based contextual classifier) on live
-# proxy traffic. It adds real latency to every request it processes, since it's a
-# live API call in the request path. Start with this off, confirm the fast layers
-# behave well in shadow testing, then turn on once you're comfortable with the
-# added latency.
-USE_LLM_CLASSIFIER = os.environ.get("USE_LLM_CLASSIFIER", "false").lower() == "true"
-
-
 def _is_ai_domain(host: str) -> bool:
     return any(host == domain or host.endswith("." + domain) for domain in AI_DOMAINS)
 
@@ -67,7 +59,6 @@ def request(flow: http.HTTPFlow) -> None:
     verdict = pipeline.evaluate_text(
         body_text,
         request_id=f"{flow.client_conn.address[0]}:{flow.client_conn.address[1]}",
-        use_classifier=USE_LLM_CLASSIFIER,
     )
 
     if verdict.action == "deny":

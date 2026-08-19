@@ -1,17 +1,9 @@
-"""
-Combines all three layers into one verdict for the mitmproxy addon to act on.
-
-Order matters for latency: cheap/fast layers run first and short-circuit the
-expensive LLM call. This operates on raw text pulled straight from an intercepted
-request body - it doesn't assume any particular JSON schema, since different AI
-vendors (and even different endpoints on the same vendor) structure their request
-bodies differently.
-"""
+"""Combines the local DLP layers into one verdict for the mitmproxy addon."""
 
 import logging
 from dataclasses import dataclass
 
-from dlp import regex_rules, pii_scan, llm_classifier
+from dlp import regex_rules, pii_scan
 
 log = logging.getLogger("dlp.pipeline")
 
@@ -23,7 +15,7 @@ class Verdict:
     reference_id: str | None = None
 
 
-def evaluate_text(text: str, request_id: str = "unknown", use_classifier: bool = True) -> Verdict:
+def evaluate_text(text: str, request_id: str = "unknown") -> Verdict:
     if not text or not text.strip():
         return Verdict(action="allow")
 
@@ -57,23 +49,5 @@ def evaluate_text(text: str, request_id: str = "unknown", use_classifier: bool =
                 "Remove or anonymize it before resending."
             )
         return Verdict(action="deny", deny_reason=reason, reference_id=f"pii:{rule}")
-
-    # Layer 3: LLM classifier - only for longer text the fast layers didn't already flag,
-    # and only if the caller wants it (it adds real latency to live proxy traffic).
-    if use_classifier and llm_classifier.should_run(text):
-        try:
-            result = llm_classifier.classify(text)
-        except Exception:
-            log.exception("classifier call failed request_id=%s", request_id)
-            # Fail open at this layer specifically - the fast layers already ran clean.
-            return Verdict(action="allow")
-
-        if result.confidential:
-            log.info("deny request_id=%s layer=llm category=%s", request_id, result.category)
-            return Verdict(
-                action="deny",
-                deny_reason=result.reason or "This message appears to contain confidential company information.",
-                reference_id=f"llm:{result.category}",
-            )
 
     return Verdict(action="allow")

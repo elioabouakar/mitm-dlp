@@ -3,7 +3,6 @@ Layer 1: high-confidence structured-secret detection via regex.
 
 This layer should have a near-zero false-positive rate - it only flags things
 that are almost certainly a real secret or ID, not "possibly sensitive text."
-Broader/fuzzier judgment calls belong in the PII layer or the LLM classifier.
 
 Sources worth pulling from as you extend this:
   - https://github.com/gitleaks/gitleaks (gitleaks.toml has hundreds of vendor-specific rules)

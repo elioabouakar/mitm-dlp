@@ -1,6 +1,6 @@
 # mitmproxy DLP addon
 
-A three-layer DLP scanner wired into [mitmproxy](https://mitmproxy.org) to inspect
+A two-layer local DLP scanner wired into [mitmproxy](https://mitmproxy.org) to inspect
 and block outbound prompts to AI tools that contain confidential company data.
 
 ## How it works
@@ -12,8 +12,6 @@ and block outbound prompts to AI tools that contain confidential company data.
 4. If so, the request body is handed to `dlp/pipeline.py`, which runs it through:
    - `dlp/regex_rules.py` - structured secrets (API keys, credit cards, SSNs, etc.)
    - `dlp/pii_scan.py` - Presidio PII detection + your company dictionary
-   - `dlp/llm_classifier.py` - optional Claude-based contextual classifier (off by
-     default - see `USE_LLM_CLASSIFIER` below)
 5. If anything is found, mitmproxy returns a `403` with a plain-text reason instead
    of forwarding the request. Otherwise, it passes through untouched.
 
@@ -24,7 +22,7 @@ python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python -m spacy download en_core_web_lg
-cp .env.example .env   # fill in ANTHROPIC_API_KEY only if you'll use the classifier layer
+cp .env.example .env
 ```
 
 Edit `company_dictionary.txt` with your actual internal codenames / client names.
@@ -79,10 +77,6 @@ never installed manually one device at a time.
 - `AI_DOMAINS` (top of `mitm_addon.py`) - which domains get inspected. Matching is
   exact-or-subdomain, so it won't accidentally catch an unrelated domain that just
   shares a substring (e.g. an analytics subdomain like `a-api.anthropic.com`).
-- `USE_LLM_CLASSIFIER` (env var, default `false`) - whether Layer 3 runs on live
-  traffic. It's a real API call in the request path and adds latency to every
-  request it processes - start with it off, confirm the fast layers behave well,
-  then turn on once you're comfortable with the added latency.
 - `company_dictionary.txt` - one internal term per line, case-insensitive match.
 
 ## What this does not catch
