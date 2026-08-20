@@ -77,7 +77,51 @@ never installed manually one device at a time.
 - `AI_DOMAINS` (top of `mitm_addon.py`) - which domains get inspected. Matching is
   exact-or-subdomain, so it won't accidentally catch an unrelated domain that just
   shares a substring (e.g. an analytics subdomain like `a-api.anthropic.com`).
-- `company_dictionary.txt` - one internal term per line, case-insensitive match.
+- `company_dictionary.txt` - one internal term per line, case-insensitive substring
+  match. Grouped by category with guidance comments - fill in real values before
+  deploying. See the "known limitation" note in that file about substring matching.
+- `dlp/pii_scan.py`'s `ENTITY_THRESHOLDS` - per-entity Presidio confidence cutoffs.
+  See "Testing and tuning" below for how these were derived and how to re-derive
+  them for your own traffic.
+
+## Testing and tuning
+
+```bash
+source venv/bin/activate
+pip install pytest  # not in requirements.txt - dev-only dependency
+pytest tests/ -v
+```
+
+`tests/test_pipeline.py` is grouped by what it's actually protecting against:
+
+- **Regex true positives / edge cases** - real secrets must be caught; near-misses
+  (e.g. a Luhn-invalid 16-digit number) must not false-positive.
+- **PII true positives / false positives** - the false-positive group is the most
+  important one to keep green. `PERSON` and `LOCATION` are the recognizers most
+  prone to firing on ordinary words (tool names, band names, generic geography).
+  If this group starts failing after a dependency bump, treat it as a real signal.
+- **Company dictionary** - case-insensitivity, comment/blank-line handling, and a
+  test that documents the substring-matching tradeoff explicitly rather than
+  leaving it as a silent surprise.
+- **Clean allow** - a batch of ordinary developer/office prompts that must never
+  be blocked. This is the "does the tool get in people's way" check.
+
+**Tuning entity thresholds:** `dlp/pii_scan.py` applies a per-entity confidence
+cutoff (`ENTITY_THRESHOLDS`) rather than one global number, because entities like
+`EMAIL_ADDRESS` score near-binary while `PERSON`/`LOCATION` are much noisier.
+`tests/tune_thresholds.py` sweeps a labeled set of should-fire / should-not-fire
+examples against the live analyzer and suggests a threshold per entity:
+
+```bash
+python tests/tune_thresholds.py
+```
+
+Expand `LABELED_CASES` in that script with real (redacted) examples from your own
+traffic before trusting its suggestions - the built-in set is a starting point.
+Run it with the production model (`en_core_web_lg`, the default) for numbers you'd
+actually deploy; for fast local iteration only, override with
+`SPACY_MODEL=en_core_web_sm python tests/tune_thresholds.py` (the small model is
+noticeably less accurate and should never be the basis for a production threshold).
 
 ## What this does not catch
 

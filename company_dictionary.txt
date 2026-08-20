@@ -1,7 +1,37 @@
-# One term per line, case-insensitive substring match.
-# Add internal codenames, unreleased product names, key client names, etc.
+# One term per line, case-insensitive SUBSTRING match (not word-boundary -
+# see tests/test_pipeline.py::TestCompanyDictionary::test_substring_boundary_false_positive
+# for why short/common terms can false-positive, e.g. "nova" inside "renovate").
 # Lines starting with # are ignored.
 #
+# Prefer specific, multi-word, or hyphenated terms over single common words -
+# they're both more precise AND less likely to collide with ordinary English.
+# Fill in real values under each category below, then delete the guidance
+# comments once populated. Keep this file itself out of anything you'd send
+# to an AI tool - it's a map of what your company considers sensitive.
+
+# --- Internal project / product codenames -----------------------------------
+# Unreleased or confidential internal names for products, features, or
+# initiatives - anything that isn't public yet.
 # project-phoenix
+# codename-orion
+
+# --- Key client / partner names ----------------------------------------------
+# Named clients, partners, or vendors whose relationship with the company
+# itself is confidential (existence of the deal, not just deal terms).
+# acme-corp
 # acme-corp-contract
-# unreleased-feature-x
+
+# --- M&A / strategic terms ---------------------------------------------------
+# Deal codenames, acquisition targets, restructuring project names - anything
+# where the term itself signals a non-public strategic move.
+# project-falcon-acquisition
+
+# --- Internal system / infrastructure names -----------------------------------
+# Non-public internal hostnames, service names, or system codenames that
+# would help an outsider map your infrastructure.
+# internal-payments-gateway-v2
+
+# --- Legal / HR sensitive terms -----------------------------------------------
+# Case names, investigation codenames, or other legal/HR-sensitive references
+# that shouldn't appear in prompts to a third-party AI tool.
+# case-2026-0142
