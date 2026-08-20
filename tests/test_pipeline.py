@@ -161,19 +161,34 @@ class TestPiiTruePositives:
     def test_bank_number(self):
         deny("wire the deposit to account number 000123456789")
 
+    def test_name_corroborated_by_company_dictionary(self, tmp_path, monkeypatch):
+        # PERSON alone doesn't deny (see TestPiiFalsePositives), but PERSON
+        # alongside another finding - here a company-dictionary hit - does.
+        dict_path = tmp_path / "company_dictionary.txt"
+        dict_path.write_text("project-phoenix\n")
+        monkeypatch.setenv("COMPANY_DICTIONARY_PATH", str(dict_path))
+        _reload_company_terms()
+
+        deny("Sarah Connor is leading project-phoenix starting Monday")
+
 
 # ---------------------------------------------------------------------------
 # Layer 2: PII - false-positive guards
 # These are the most important/fragile tests in the suite. If these start
-# failing, it usually means a threshold or entity-list change made the
-# detector too trigger-happy on ordinary business language.
+# failing, it usually means a threshold, entity-list, or corroboration-rule
+# change made the detector too trigger-happy on ordinary business language.
 # ---------------------------------------------------------------------------
 
 class TestPiiFalsePositives:
-    def test_common_product_or_tool_name_not_flagged_as_location(self):
+    def test_tool_name_not_flagged_as_person(self):
+        # Verified on the production en_core_web_lg model: Presidio's PERSON
+        # recognizer scores "Slack" here identically (0.85) to a real name
+        # like "Michael Chen" - a threshold can't separate them. PERSON
+        # findings require corroboration (see dlp/pii_scan.py) instead, so a
+        # bare mention like this passes through.
         allow("Ping me on Slack about the deploy")
 
-    def test_band_or_brand_name_not_flagged_as_location(self):
+    def test_brand_name_not_flagged_as_person(self):
         allow("My favorite band is Nirvana, we should use it for the demo playlist")
 
     def test_generic_role_reference_not_flagged_as_person(self):
@@ -190,11 +205,13 @@ class TestPiiFalsePositives:
     def test_science_fact_no_pii(self):
         allow("The mitochondria is the powerhouse of the cell")
 
-    def test_first_name_only_casual_mention(self):
-        # A bare first name in casual context is a common false-positive source
-        # for the PERSON recognizer; decide deliberately whether this should
-        # allow or deny for your risk tolerance, then keep this test in sync.
-        pipeline.evaluate_text("Reach out to Karen in accounting")
+    def test_first_name_only_casual_mention_allowed(self):
+        # Deliberate design decision (see REQUIRE_CORROBORATION in
+        # dlp/pii_scan.py): a bare name with nothing else alongside it is
+        # allowed through. This is the accepted tradeoff - a message that's
+        # sensitive purely because of who's named, with no other PII/secret/
+        # dictionary hit present, won't be caught by this layer.
+        allow("Reach out to Karen in accounting")
 
 
 # ---------------------------------------------------------------------------

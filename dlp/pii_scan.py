@@ -42,14 +42,23 @@ ENTITIES = [
 # SSN recognizer only adds value for atypically-formatted SSNs, at real risk
 # of false-firing on any 5-9 digit sequence with SSN-adjacent context words.
 #
-# These starting values came from tests/tune_thresholds.py run against the
-# small (en_core_web_sm) model on a small labeled set - re-run that script on
-# this VM with SPACY_MODEL=en_core_web_lg (the production model) and your own
-# example prompts before trusting these for real traffic. LOCATION in
-# particular showed no clean separation between true and false positives at
-# any threshold in that run; it's kept enabled here but at a high bar as a
-# deliberate "mostly off" default until re-tuned - consider dropping it from
-# ENTITIES entirely if re-tuning on the lg model doesn't improve separation.
+# PERSON is a special case, not just a threshold tuning problem: verified on
+# the production en_core_web_lg model that "Slack", "Nirvana", "Michael Chen",
+# and "Sarah Connor" all score an IDENTICAL 0.85. Presidio's spaCy-based PERSON
+# recognizer assigns a flat confidence to anything it POS/NER-tags as a proper
+# noun, regardless of context - no threshold value can separate real names
+# from brand/tool names here. Instead of a threshold, PERSON findings require
+# corroboration: see REQUIRE_CORROBORATION below and the logic in scan(). A
+# bare name mention alone is allowed through; a name alongside another PII/
+# secret/dictionary hit is denied. This means a message that's sensitive
+# *purely* because of who's named, with nothing else alongside it, will not
+# be caught - a known, deliberate tradeoff, not an oversight.
+#
+# LOCATION showed the same flat-score problem on the small model during
+# development; it's kept at a high bar as a "mostly off" default. Re-run
+# tests/tune_thresholds.py against production traffic periodically - if
+# LOCATION never achieves clean separation, consider dropping it from
+# ENTITIES entirely, same as was done conceptually for PERSON below.
 DEFAULT_THRESHOLD = 0.6
 ENTITY_THRESHOLDS = {
     "EMAIL_ADDRESS": 0.5,
@@ -61,6 +70,11 @@ ENTITY_THRESHOLDS = {
     "IP_ADDRESS": 0.7,
     "LOCATION": 0.9,
 }
+
+# Entity types that must not deny on their own - only when at least one other
+# finding (any other entity, or a company-dictionary hit) is also present in
+# the same message. See the PERSON note above for why.
+REQUIRE_CORROBORATION = {"PERSON"}
 
 
 # Real deployment must use en_core_web_lg (best accuracy). Override with
@@ -96,21 +110,30 @@ def _company_terms() -> tuple[str, ...]:
 
 
 def scan(text: str) -> list[Finding]:
-    findings: list[Finding] = []
+    strong_findings: list[Finding] = []
+    corroboration_findings: list[Finding] = []
 
     results = _analyzer().analyze(text=text, entities=ENTITIES, language="en")
     for r in results:
         threshold = ENTITY_THRESHOLDS.get(r.entity_type, DEFAULT_THRESHOLD)
         if r.score >= threshold:
             snippet = text[r.start:r.end]
-            findings.append(Finding(rule=f"pii_{r.entity_type.lower()}", snippet=_redact(snippet)))
+            finding = Finding(rule=f"pii_{r.entity_type.lower()}", snippet=_redact(snippet))
+            if r.entity_type in REQUIRE_CORROBORATION:
+                corroboration_findings.append(finding)
+            else:
+                strong_findings.append(finding)
 
     lowered = text.lower()
     for term in _company_terms():
         if term in lowered:
-            findings.append(Finding(rule="company_dictionary", snippet=term))
+            strong_findings.append(Finding(rule="company_dictionary", snippet=term))
 
-    return findings
+    # Findings that require corroboration (currently: PERSON) only count if
+    # something else was also found in this message - see REQUIRE_CORROBORATION.
+    if strong_findings:
+        return strong_findings + corroboration_findings
+    return strong_findings
 
 
 def _redact(value: str, keep: int = 2) -> str:
