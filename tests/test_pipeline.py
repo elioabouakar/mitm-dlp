@@ -161,6 +161,15 @@ class TestPiiTruePositives:
     def test_bank_number(self):
         deny("wire the deposit to account number 000123456789")
 
+    def test_location_mention(self):
+        # Regression test for a real bug: LOCATION was originally set to a
+        # 0.9 threshold (defensive default from small-model testing), which
+        # on the production en_core_web_lg model was ABOVE the score a real
+        # location mention gets (0.85) - a false negative. Threshold lowered
+        # to 0.7. If this test fails, someone raised the threshold back up
+        # without re-checking against the lg model.
+        deny("the client is based in our Singapore office, loop in their team")
+
     def test_name_corroborated_by_company_dictionary(self, tmp_path, monkeypatch):
         # PERSON alone doesn't deny (see TestPiiFalsePositives), but PERSON
         # alongside another finding - here a company-dictionary hit - does.

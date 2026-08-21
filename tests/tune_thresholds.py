@@ -38,7 +38,12 @@ LABELED_CASES: list[tuple[str, str, bool]] = [
     # EMAIL_ADDRESS
     ("send the invoice to accounts@ourvendor.com", "EMAIL_ADDRESS", True),
     ("reach out at john.doe+work@example.co.uk", "EMAIL_ADDRESS", True),
-    ("the format is name@domain.com generally", "EMAIL_ADDRESS", False),
+    # NOTE: avoid a "should NOT fire" example that's itself a syntactically
+    # valid email (e.g. "name@domain.com") - Presidio is correct to flag
+    # those, so labeling one as a false positive just produces a bogus
+    # "no separation" result. Use something that merely talks about the
+    # concept without containing an actual address shape.
+    ("please follow the standard firstname.lastname email convention", "EMAIL_ADDRESS", False),
 
     # PHONE_NUMBER
     ("her direct line is +1 (415) 555-0182, call before noon", "PHONE_NUMBER", True),
@@ -52,6 +57,11 @@ LABELED_CASES: list[tuple[str, str, bool]] = [
     ("Reach out to Karen in accounting", "PERSON", True),
     ("Reach out to the on-call engineer if the build breaks", "PERSON", False),
     ("the API returns a User object with an id field", "PERSON", False),
+    # These are the known small-model false-positive triggers for LOCATION -
+    # also worth checking against PERSON, since either entity firing on them
+    # would be wrong.
+    ("Ping me on Slack about the deploy", "PERSON", False),
+    ("My favorite band is Nirvana", "PERSON", False),
 
     # US_SSN
     ("employee SSN on file: 123-45-6789", "US_SSN", True),
@@ -112,20 +122,37 @@ def sweep():
             continue
         pos_scores = [s for (_, should_fire), s in cases.items() if should_fire]
         neg_scores = [s for (_, should_fire), s in cases.items() if not should_fire]
-        min_pos = min(pos_scores) if pos_scores else None
-        max_neg = max(neg_scores) if neg_scores else 0.0
 
-        if min_pos is None:
-            print(f"{entity:<18} no labeled positive cases - add some to LABELED_CASES")
-        elif min_pos > max_neg:
-            suggested = round((min_pos + max_neg) / 2 + 0.001, 2)
-            print(f"{entity:<18} clean separation -> suggested threshold ~{suggested:.2f} "
-                  f"(true positives >= {min_pos:.2f}, false positives <= {max_neg:.2f})")
+        # A true positive scoring exactly 0.0 almost always means the
+        # recognizer never detected it at all - a coverage miss, not a
+        # threshold collision. Mixing that into "lowest true positive" makes
+        # a perfectly separable set look unseparable. Report misses
+        # separately instead of letting them poison the threshold math.
+        detected_pos = [s for s in pos_scores if s > 0.0]
+        missed_pos = [s for s in pos_scores if s == 0.0]
+
+        max_neg = max(neg_scores) if neg_scores else 0.0
+        min_detected_pos = min(detected_pos) if detected_pos else None
+
+        if missed_pos:
+            print(f"{entity:<18} WARNING: {len(missed_pos)} true-positive case(s) scored 0.0 - "
+                  f"the recognizer never detected them at all. No threshold can fix a miss; "
+                  f"this needs a different recognizer/rule or is a documented coverage gap.")
+
+        if min_detected_pos is None:
+            print(f"{entity:<18} no true positives were ever detected - this entity/recognizer "
+                  f"combo isn't contributing anything for these cases.")
+        elif min_detected_pos > max_neg:
+            suggested = round((min_detected_pos + max_neg) / 2 + 0.001, 2)
+            print(f"{entity:<18} clean separation on detected cases -> suggested threshold "
+                  f"~{suggested:.2f} (detected true positives >= {min_detected_pos:.2f}, "
+                  f"false positives <= {max_neg:.2f})")
         else:
             print(f"{entity:<18} NO clean separation with this test set "
-                  f"(lowest true positive {min_pos:.2f} <= highest false positive {max_neg:.2f}). "
-                  f"Consider: more context words, a custom recognizer, or dropping this "
-                  f"entity from ENTITIES and relying on the regex layer / manual review instead.")
+                  f"(lowest detected true positive {min_detected_pos:.2f} <= highest false "
+                  f"positive {max_neg:.2f}). Consider: more context words, a custom recognizer, "
+                  f"corroboration with another finding (see REQUIRE_CORROBORATION in pii_scan.py), "
+                  f"or dropping this entity from ENTITIES.")
 
 
 if __name__ == "__main__":

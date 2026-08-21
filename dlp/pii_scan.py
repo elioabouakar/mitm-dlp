@@ -54,11 +54,19 @@ ENTITIES = [
 # *purely* because of who's named, with nothing else alongside it, will not
 # be caught - a known, deliberate tradeoff, not an oversight.
 #
-# LOCATION showed the same flat-score problem on the small model during
-# development; it's kept at a high bar as a "mostly off" default. Re-run
-# tests/tune_thresholds.py against production traffic periodically - if
-# LOCATION never achieves clean separation, consider dropping it from
-# ENTITIES entirely, same as was done conceptually for PERSON below.
+# LOCATION showed the same flat-score problem as PERSON on the small
+# (en_core_web_sm) model during early development, so it was initially set
+# very high (0.9) as a defensive "mostly off" default. Re-verified on the
+# production en_core_web_lg model: that concern doesn't hold here. On lg,
+# "Slack" and "Nirvana" scored 0.00 for LOCATION (correctly not detected),
+# while a genuine mention ("...our Singapore office") scored 0.85 - a clean
+# gap. The old 0.9 threshold was actually causing false NEGATIVES on lg
+# (0.85 < 0.9), silently letting real location mentions through. Lowered to
+# 0.7 based on this real separation. Re-run tests/tune_thresholds.py
+# periodically against real traffic to confirm this still holds - and note
+# LOCATION still has real coverage gaps unrelated to threshold: e.g. "the
+# Eiffel Tower" scored 0.00 (recognizer just didn't detect it at all), which
+# no threshold can fix.
 DEFAULT_THRESHOLD = 0.6
 ENTITY_THRESHOLDS = {
     "EMAIL_ADDRESS": 0.5,
@@ -68,7 +76,7 @@ ENTITY_THRESHOLDS = {
     "US_BANK_NUMBER": 0.3,
     "CREDIT_CARD": 0.5,
     "IP_ADDRESS": 0.7,
-    "LOCATION": 0.9,
+    "LOCATION": 0.7,
 }
 
 # Entity types that must not deny on their own - only when at least one other
